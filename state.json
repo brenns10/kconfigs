@@ -203,6 +203,12 @@
         },
         "Upstream Default 6.8 x86_64": {
             "latest_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.8.9.tar.xz"
+        },
+        "Upstream Default 6.9 aarch64": {
+            "latest_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz"
+        },
+        "Upstream Default 6.9 x86_64": {
+            "latest_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz"
         }
     },
     "fetchers": {
@@ -408,6 +414,12 @@
             },
             "upstream-6.8-x86_64": {
                 "last_version": "6.8.9"
+            },
+            "upstream-6.9-aarch64": {
+                "last_version": "6.9"
+            },
+            "upstream-6.9-x86_64": {
+                "last_version": "6.9"
             }
         }
     }
