@@ -9,13 +9,46 @@
     <link rel="icon" type="image/png" href="tux-sm.png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <!-- Popperjs (required by tempus dominus)-->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js" integrity="sha256-BRqBN7dYgABqtY9Hd4ynE+1slnEw+roEPFzQ7TRRfcg=" crossorigin="anonymous"></script>
+    <!-- Tempus Dominus JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.9.4/dist/js/tempus-dominus.min.js" crossorigin="anonymous"></script>
+    <!-- Tempus Dominus Styles -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@eonasdan/tempus-dominus@6.9.4/dist/css/tempus-dominus.min.css" crossorigin="anonymous">
+    <!-- FontAwesome for calendar icon -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   </head>
   <body>
+
+  <div class="modal fade" id="versionModal" tabindex="-1" aria-labelledby="versionModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="versionModalLabel">Select Date of Snapshot</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+           <div class="input-group" id="versionDateTimePicker" data-td-target-input="nearest" data-td-target-toggle="nearest">
+                <input id="versionDateTimePicker_input" type="text" class="form-control" data-td-target="#versionDateTimePicker"/>
+                <span class="input-group-text" data-td-target="#versionDateTimePicker" data-td-toggle="datetimepicker">
+                    <i class="fas fa-calendar"><span class="path1"></span><span class="path2"></span></i>
+                </span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="navigateToVersionFromDate(document.getElementById('versionDateTimePicker_input').value)">Save changes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="container">
       <header class="d-flex flex-wrap justify-content-center py-3 mb-4 border-bottom">
         <a href="." class="d-flex align-items-center mb-3 mb-md-0 me-md-auto link-body-emphasis text-decoration-none">
-          <span class="fs-4">Distribution Kernel Configs</span>
+          <span class="fs-4" id="heading">Distribution Kernel Configs</span>
         </a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#versionModal">Choose Version</button>
       </header>
     </div>
 
@@ -41,6 +74,15 @@
           <td>y</td>
         </tbody>
       </table>
+
+      <div class="row">
+        <div class="col-auto">
+          <button type="button" class="btn btn-primary" onclick="exportTsv()">Save as TSV</button>
+        </div>
+        <div class="col-auto">
+          <button type="button" class="btn btn-secondary" onclick="exportText()">Save as Text</button>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -48,6 +90,111 @@
       var configMap = new Map();
 
       var selectedConfigs = new Set();
+
+      var versionDateMapping = new Map();
+      var currentVersion = "";
+      var currentDate = "";
+
+      function navigateToVersionFromDate(date) {
+        version = versionDateMapping.get(date);
+        if(!version) {
+          return // if no version present, do not navigate
+        }
+        let params = new URLSearchParams(document.location.search);
+        params.delete("version");
+        params.delete("date");
+        params.append("version", version);
+        url = window.location.pathname + `?${params.toString()}`;
+        window.location.href = url;
+      }
+
+      function dateString(date) {
+        const yearStr = date.getUTCFullYear().toString().padStart(4, "0");
+        const monthStr = (date.getUTCMonth() + 1).toString().padStart(2, "0");
+        const dayStr = date.getUTCDate().toString().padStart(2, "0");
+        return `${yearStr}-${monthStr}-${dayStr}`;
+      }
+
+      function populateVersionOptions(data) {
+          data = JSON.parse(data)
+          let resp = Array.from(data);
+          let dates = new Set();
+          resp.forEach((res)=>{
+              const date = new Date(res.commit.committer.date);
+              const dateStr = dateString(date);
+              dates.add(date);
+              versionDateMapping.set(dateStr, res.sha)
+              // If we started with a SHA, replace it with the date string
+              // for a better user experience. If we started with a date, no
+              // need to update the header, but we need to fetch data now.
+              if (currentVersion == res.sha) {
+                  setHeading(currentVersion, dateStr);
+                  currentDate = dateStr;
+              } else if (currentDate == dateStr) {
+                  currentVersion = res.sha;
+                  requestData();
+              }
+          })
+          let datepicker = document.getElementById("versionDateTimePicker")
+          new tempusDominus.TempusDominus(datepicker, {
+              restrictions: {
+                  enabledDates: Array.from(dates),
+              },
+              display: {
+                  viewMode: 'calendar',
+                  components: {
+                      clock: false,
+                      hours: false,
+                      minutes: false,
+                      seconds: false,
+                      useTwentyfourHour: undefined
+                  },
+              },
+              localization: {
+                  format: 'yyyy-MM-dd',
+              },
+              useCurrent: false,
+          })
+      }
+
+      function getSummaryURL(version='') {
+        if(!version) return "summary.json" // By default fetch latest configuration summary
+        return `https://raw.githubusercontent.com/oracle/kconfigs/${version}/docs/summary.json`
+      }
+
+      function setHeading(version, date) {
+        let sp = document.getElementById("heading")
+        if (date)
+            sp.innerHTML = `Distribution Kernel Configs (date: ${date})`
+        else
+            sp.innerHTML = `Distribution Kernel Configs (version: ${version})`
+      }
+
+      function invalidVersion() {
+          alert("Invalid Version. Please add a valid version");
+          params.delete("version");
+          url = window.location.pathname + (params.toString())?`?${params.toString()}`:'';
+          window.location.href = url;
+      }
+
+      function initVersion() {
+          let params = new URLSearchParams(document.location.search);
+          let version = params.get("version");
+          let date = params.get("date");
+
+          /* If version is provided, prefer it */
+          if (version) {
+              date = null;
+          } else if (date) {
+              currentDate = date;
+              setHeading(version, date);
+          } else {
+              version = "gh-pages";
+              date = "latest";
+          }
+          setHeading(version, date);
+          return version
+      }
 
       function loadData(data) {
           let index = 0;
@@ -71,6 +218,19 @@
               }
           }
           reload(changed);
+      }
+      function requestData() {
+          const xhr = new XMLHttpRequest();
+          xhr.open("GET", getSummaryURL(currentVersion), true);
+          xhr.onload = (event) => {
+              console.log("Loaded kernel config summary")
+              if (event.target.status === 200) {
+                  loadData(JSON.parse(event.target.response));
+              } else {
+                  invalidVersion();
+              }
+          }
+          xhr.send(null);
       }
       function reload(pushState) {
           console.log("Reloading")
@@ -136,8 +296,7 @@
           }
 
           if (pushState) {
-              let qs = new URLSearchParams();
-              for (cn of selectedConfigs) {
+              let qs = new URLSearchParams(); for (cn of selectedConfigs) {
                   qs.append("config", cn);
               }
               history.pushState(null, "", "?" + qs.toString())
@@ -168,16 +327,107 @@
               reload(true);
           }
       }
+      function doDownload(blob, filename) {
+          let a = document.createElement("a");
+          let url = URL.createObjectURL(blob);
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+              document.body.removeChild(a);
+              window.URL.revokeObjectURL(url);
+          }, 0);
+      }
+      function exportTsv() {
+          let text = "Distro";
+
+          let sortedConfigs = Array.from(selectedConfigs.keys());
+          sortedConfigs.sort();
+          for (cn of sortedConfigs) {
+              text += "\t" + cn;
+          }
+          text += "\n";
+
+          let sortedDistros = Array.from(distroToIndex.keys());
+          sortedDistros.sort();
+          for (let dn of sortedDistros) {
+              text += dn;
+              let index = distroToIndex.get(dn);
+              for (let cn of sortedConfigs) {
+                  let configList = configMap.get(cn);
+                  if (configList !== undefined) {
+                      val = configList[index];
+                  } else {
+                      val = null;
+                  }
+                  text += "\t"
+                  if (val) {
+                      text += configList[index];
+                  }
+              }
+              text += "\n";
+          }
+          let file = new Blob([text], {type: "text/tab-separated-values"});
+          doDownload(file, "kconfigs.tsv");
+      }
+      function exportText() {
+          let sortedConfigs = Array.from(selectedConfigs.keys());
+          sortedConfigs.sort();
+          let sortedDistros = Array.from(distroToIndex.keys());
+          sortedDistros.sort();
+
+          let distro_width = 6; /* Distro */
+          for (let dn of sortedDistros) {
+              distro_width = Math.max(distro_width, dn.length);
+          }
+          let config_widths = [];
+          for (let cn of sortedConfigs) {
+              let width = cn.length;
+              let configList = configMap.get(cn);
+              if (configList === undefined) continue;
+              for (let val of configList)
+                  width = Math.max(width, val ? val.length : 2);
+              config_widths.push(width);
+          }
+
+          let text = "Distro".padEnd(distro_width);
+          sortedConfigs.map((cn, i) => {
+              text += cn.padStart(2 + config_widths[i]);
+          });
+          text += "\n";
+
+          for (let dn of sortedDistros) {
+              text += dn.padEnd(distro_width);
+              let index = distroToIndex.get(dn);
+              sortedConfigs.map((cn, i) => {
+                  let configList = configMap.get(cn);
+                  if (configList === undefined || !configList[index]) {
+                      text += "--".padStart(2 + config_widths[i]);
+                  } else if (configList[index]) {
+                      text += configList[index].padStart(2 + config_widths[i]);
+                  }
+              });
+              text += "\n";
+          }
+          let file = new Blob([text], {type: "text/plain"});
+          doDownload(file, "kconfigs.txt");
+      }
       window.onpopstate = setState;
       setState();
+      currentVersion = initVersion();
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("GET", "summary.json", true);
-      xhr.onload = (event) => {
-          console.log("Loaded kernel config summary")
-          loadData(JSON.parse(event.target.response));
+      let vor = new XMLHttpRequest()
+      vor.open("GET", "https://api.github.com/repos/oracle/kconfigs/commits?sha=gh-pages", true)
+      vor.onload = (event) => {
+          console.log("Loaded Versions from Repository");
+          populateVersionOptions(event.target.response)
       }
-      xhr.send(null);
+      vor.send(null)
+
+      if (currentVersion) {
+          requestData();
+      }
     </script>
   </body>
 </html>
